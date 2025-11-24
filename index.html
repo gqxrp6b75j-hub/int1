@@ -26,6 +26,8 @@
             left: 0;
             width: 100vw;
             height: 100vh;
+            /* AUTO-LOAD BACKGROUND HERE */
+            background-image: url('stars.jpg'); 
             background-size: cover;
             background-position: center;
             z-index: 1;
@@ -153,7 +155,6 @@
 
         <div style="flex-grow:1;"></div> 
         
-        <!-- NEW: Text Input for BG instead of File Input to avoid crash -->
         <button id="btn-set-bg">🖼️ Set BG</button>
         
         <select id="midi-out"><option value="">No MIDI</option></select>
@@ -445,7 +446,9 @@
             const raw = localStorage.getItem('constellationMidiPro');
             if (raw) {
                 const data = JSON.parse(raw);
-                if (data.bg) appContainer.style.backgroundImage = data.bg;
+                if (data.bg) {
+                    appContainer.style.backgroundImage = data.bg;
+                }
                 if (data.shapes) {
                     shapes = [];
                     svgLayer.innerHTML = ''; 
@@ -492,9 +495,9 @@
             reader.readAsText(file);
         });
 
-        // NEW: Text input method for background to prevent crash
+        // Manual override just in case
         document.getElementById('btn-set-bg').onclick = () => {
-            const url = prompt("Enter image filename (e.g., 'bg.jpg' if hosted in same folder) or full URL:");
+            const url = prompt("Enter image filename (e.g., 'stars.jpg') or full URL:", 'stars.jpg');
             if(url) {
                 appContainer.style.backgroundImage = `url(${url})`;
                 saveToLocalStorage();
