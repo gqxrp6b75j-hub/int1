@@ -2,7 +2,13 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    
+    <!-- iOS Full Screen Settings -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#111">
+    
     <title>Constellation MIDI Pro</title>
     <style>
         body {
@@ -25,7 +31,6 @@
             z-index: 1;
         }
 
-        /* SVG Layer for Shapes */
         #svg-layer {
             position: absolute;
             top: 0;
@@ -35,13 +40,13 @@
             z-index: 10;
         }
 
-        /* UI Overlay */
         #ui-layer {
             position: absolute;
             top: 0;
             left: 0;
             width: 100%;
             padding: 10px;
+            padding-top: env(safe-area-inset-top, 10px);
             background: rgba(0, 0, 0, 0.85);
             z-index: 100;
             display: flex;
@@ -55,8 +60,8 @@
             display: none;
         }
 
-        /* Buttons & Inputs */
-        button, select, label, .file-btn {
+        /* Buttons */
+        button, select, .file-btn {
             background: #333;
             color: white;
             border: 1px solid #555;
@@ -80,9 +85,9 @@
             color: black;
         }
 
-        #bg-input, #load-input { display: none; }
+        #load-input { display: none; }
 
-        /* SVG Shapes Styles */
+        /* Shapes */
         .midi-shape {
             fill: rgba(255, 255, 255, 0.15);
             stroke: rgba(255, 255, 255, 0.5);
@@ -91,29 +96,20 @@
             cursor: pointer;
         }
 
-        /* Active (Pressed) State */
         .midi-shape.active {
             fill: rgba(255, 255, 255, 0.8);
             stroke: white;
             filter: drop-shadow(0 0 10px rgba(255,255,255,0.8));
         }
 
-        /* Edit Mode Styles */
         .editing .midi-shape {
-            stroke: #FF9500; /* Orange stroke in edit mode */
+            stroke: #FF9500; 
             stroke-dasharray: 5;
             fill: rgba(255, 149, 0, 0.1);
         }
         
-        /* Drawing Preview Lines */
-        .drawing-line {
-            stroke: #30D158;
-            stroke-width: 2px;
-            fill: none;
-        }
-        .drawing-point {
-            fill: #30D158;
-        }
+        .drawing-line { stroke: #30D158; stroke-width: 2px; fill: none; }
+        .drawing-point { fill: #30D158; }
 
         /* Settings Modal */
         #modal-overlay {
@@ -136,15 +132,11 @@
             gap: 15px;
         }
         #modal h3 { margin: 0 0 5px 0; color: #eee; }
-
     </style>
 </head>
 <body>
 
-    <!-- Background Image Container -->
     <div id="app-container"></div>
-
-    <!-- SVG Draw Layer -->
     <svg id="svg-layer"></svg>
 
     <!-- Top Control Bar -->
@@ -153,33 +145,29 @@
         <button id="btn-edit">✎ Edit</button>
         <div style="width: 1px; height: 20px; background: #555; margin: 0 5px;"></div>
         
-        <!-- Edit Tools (Hidden in Play Mode) -->
         <div id="edit-tools" style="display:none; gap:10px; align-items:center;">
             <button id="btn-add-circle">+ Circle</button>
             <button id="btn-draw-poly">Draw Shape</button>
-            <button id="btn-finish-poly" style="display:none; background:#30D158; color:black;">Finish Shape</button>
-            <span style="font-size:12px; color:#aaa;">(Drag to Move • Tap to Edit)</span>
+            <button id="btn-finish-poly" style="display:none; background:#30D158; color:black;">Finish</button>
         </div>
 
-        <!-- System Tools -->
-        <div style="flex-grow:1;"></div> <!-- Spacer -->
+        <div style="flex-grow:1;"></div> 
         
-        <label for="bg-input">📷 BG</label>
-        <input type="file" id="bg-input" accept="image/*">
+        <!-- NEW: Text Input for BG instead of File Input to avoid crash -->
+        <button id="btn-set-bg">🖼️ Set BG</button>
         
         <select id="midi-out"><option value="">No MIDI</option></select>
         
-        <button onclick="saveProject()">💾 Save</button>
-        <label for="load-input">📂 Load</label>
+        <button onclick="saveProject()">💾</button>
+        <button onclick="document.getElementById('load-input').click()">📂</button>
         <input type="file" id="load-input" accept=".json">
         
+        <button id="btn-fullscreen">⛶</button>
         <button id="btn-hide-ui">Hide</button>
     </div>
     
-    <!-- Floating Gear to show UI -->
     <button id="btn-show-ui" style="position:absolute; top:10px; right:10px; z-index:99; opacity:0.5; display:none; font-size:20px; padding:5px 10px;">⚙️</button>
 
-    <!-- Settings Modal -->
     <div id="modal-overlay">
         <div id="modal">
             <h3>Button Settings</h3>
@@ -194,23 +182,18 @@
 
     <script>
         // --- State Variables ---
-        let mode = 'play'; // 'play', 'edit', 'drawing'
-        let shapes = [];   // Array to store shape data object {id, type, points, x, y, note}
+        let mode = 'play'; 
+        let shapes = [];
         let nextId = 1;
         let nextNote = 60;
         let midiOutput = null;
-        
-        // Drawing State
         let drawPoints = []; 
-        let tempPolyline = null; // SVG element for previewing drawing
-        
-        // Dragging State
+        let tempPolyline = null; 
         let selectedShapeId = null;
         let isDragging = false;
         let dragStart = { x:0, y:0 };
-        let initialShapePos = { x:0, y:0, points: [] }; // Store initial state before drag
+        let initialShapePos = { x:0, y:0, points: [] }; 
 
-        // DOM Elements
         const svgLayer = document.getElementById('svg-layer');
         const appContainer = document.getElementById('app-container');
         const uiLayer = document.getElementById('ui-layer');
@@ -239,48 +222,40 @@
             midiOutput.send(msg);
         }
 
-        // --- Interaction Handling ---
+        // --- Full Screen Logic ---
+        document.getElementById('btn-fullscreen').onclick = () => {
+            const doc = document.documentElement;
+            if (doc.requestFullscreen) {
+                doc.requestFullscreen();
+            } else if (doc.webkitRequestFullscreen) { doc.webkitRequestFullscreen(); }
+        };
 
-        // 1. Switch Modes
+        // --- Interaction Handling ---
         document.getElementById('btn-play').onclick = () => setMode('play');
         document.getElementById('btn-edit').onclick = () => setMode('edit');
 
         function setMode(newMode) {
             mode = newMode;
             document.body.className = (mode === 'edit' || mode === 'drawing') ? 'editing' : '';
-            
-            // Toggle Buttons
             document.getElementById('btn-play').className = mode === 'play' ? 'mode-active' : '';
             document.getElementById('btn-edit').className = (mode === 'edit' || mode === 'drawing') ? 'mode-active' : '';
-            
-            // Show/Hide Tools
             editTools.style.display = (mode === 'edit' || mode === 'drawing') ? 'flex' : 'none';
-            
-            // Reset Drawing if switching away
             if (mode !== 'drawing') resetDrawing();
         }
 
-        // 2. Add Circle
         document.getElementById('btn-add-circle').onclick = () => {
             const cx = window.innerWidth / 2;
             const cy = window.innerHeight / 2;
-            createShapeData({
-                type: 'circle',
-                cx: cx,
-                cy: cy,
-                r: 30,
-                note: nextNote++
-            });
+            createShapeData({ type: 'circle', cx: cx, cy: cy, r: 30, note: nextNote++ });
         };
 
-        // 3. Draw Polygon Tool
         document.getElementById('btn-draw-poly').onclick = () => {
             if (mode === 'drawing') {
-                setMode('edit'); // Cancel draw
+                setMode('edit');
             } else {
                 mode = 'drawing';
                 document.getElementById('btn-draw-poly').className = 'draw-active';
-                document.getElementById('btn-draw-poly').innerText = 'Cancel Draw';
+                document.getElementById('btn-draw-poly').innerText = 'Cancel';
                 document.getElementById('btn-finish-poly').style.display = 'inline-block';
                 drawPoints = [];
             }
@@ -288,21 +263,15 @@
 
         document.getElementById('btn-finish-poly').onclick = () => {
             if (drawPoints.length < 3) {
-                alert("Tap at least 3 points to make a shape.");
+                alert("Tap at least 3 points.");
                 return;
             }
-            createShapeData({
-                type: 'polygon',
-                points: drawPoints, // Array of {x,y}
-                note: nextNote++
-            });
-            setMode('edit'); // Return to edit mode
+            createShapeData({ type: 'polygon', points: drawPoints, note: nextNote++ });
+            setMode('edit');
         };
 
-        // Global Touch/Click Handler for Drawing & Deselecting
         svgLayer.addEventListener('pointerdown', (e) => {
             if (mode === 'drawing') {
-                // Add point
                 const pt = { x: e.clientX, y: e.clientY };
                 drawPoints.push(pt);
                 renderDrawingPreview();
@@ -314,14 +283,10 @@
                 tempPolyline = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
                 tempPolyline.setAttribute("class", "drawing-line");
                 svgLayer.appendChild(tempPolyline);
-                
-                // Add circles for points
             }
-            // Update points string
             const ptsString = drawPoints.map(p => `${p.x},${p.y}`).join(" ");
             tempPolyline.setAttribute("points", ptsString);
             
-            // Draw marker for latest point
             const marker = document.createElementNS("http://www.w3.org/2000/svg", "circle");
             marker.setAttribute("cx", drawPoints[drawPoints.length-1].x);
             marker.setAttribute("cy", drawPoints[drawPoints.length-1].y);
@@ -339,8 +304,6 @@
             document.getElementById('btn-draw-poly').innerText = 'Draw Shape';
             document.getElementById('btn-finish-poly').style.display = 'none';
         }
-
-        // --- Shape Creation & Rendering ---
 
         function createShapeData(data) {
             const id = nextId++;
@@ -362,27 +325,21 @@
                 const pts = shapeData.points.map(p => `${p.x},${p.y}`).join(" ");
                 el.setAttribute("points", pts);
             }
-
             el.setAttribute("class", "midi-shape");
             el.setAttribute("data-id", shapeData.id);
             el.id = "shape-" + shapeData.id;
-
-            // Event Listeners
             addShapeEvents(el, shapeData);
-
             svgLayer.appendChild(el);
         }
 
         function addShapeEvents(el, shapeData) {
-            // 1. Play Mode: Touch
             el.addEventListener('pointerdown', (e) => {
                 if (mode === 'play') {
                     e.preventDefault();
                     el.classList.add('active');
                     sendMidi(shapeData.note, true);
-                    el.setPointerCapture(e.pointerId); // Capture drag if they slide off
+                    el.setPointerCapture(e.pointerId);
                 } else if (mode === 'edit') {
-                    // Start Drag logic
                     startDrag(e, shapeData);
                 }
             });
@@ -393,10 +350,7 @@
                     sendMidi(shapeData.note, false);
                     el.releasePointerCapture(e.pointerId);
                 } else if (mode === 'edit') {
-                    if (!isDragging) {
-                        // It was a click, open settings
-                        openSettings(shapeData);
-                    }
+                    if (!isDragging) openSettings(shapeData);
                     stopDrag();
                 }
             });
@@ -408,27 +362,21 @@
                  }
             });
 
-            // Drag Move
             el.addEventListener('pointermove', (e) => {
-                 if(mode === 'edit' && selectedShapeId === shapeData.id) {
-                     doDrag(e);
-                 }
+                 if(mode === 'edit' && selectedShapeId === shapeData.id) doDrag(e);
             });
         }
 
-        // --- Drag Logic ---
         function startDrag(e, shapeData) {
-            isDragging = false; // Will become true if moved > 5px
+            isDragging = false; 
             selectedShapeId = shapeData.id;
             dragStart = { x: e.clientX, y: e.clientY };
             
-            // Deep copy initial state
             if (shapeData.type === 'circle') {
                 initialShapePos = { cx: shapeData.cx, cy: shapeData.cy };
             } else {
                 initialShapePos = { points: JSON.parse(JSON.stringify(shapeData.points)) };
             }
-            
             const el = document.getElementById("shape-"+shapeData.id);
             el.setPointerCapture(e.pointerId);
         }
@@ -436,8 +384,6 @@
         function doDrag(e) {
             const dx = e.clientX - dragStart.x;
             const dy = e.clientY - dragStart.y;
-
-            // Threshold to prevent accidental drags when tapping
             if (Math.abs(dx) > 3 || Math.abs(dy) > 3) isDragging = true;
             if (!isDragging) return;
 
@@ -450,11 +396,7 @@
                 el.setAttribute("cx", shape.cx);
                 el.setAttribute("cy", shape.cy);
             } else {
-                // Update all polygon points
-                shape.points = initialShapePos.points.map(p => ({
-                    x: p.x + dx,
-                    y: p.y + dy
-                }));
+                shape.points = initialShapePos.points.map(p => ({ x: p.x + dx, y: p.y + dy }));
                 const pts = shape.points.map(p => `${p.x},${p.y}`).join(" ");
                 el.setAttribute("points", pts);
             }
@@ -465,7 +407,6 @@
             selectedShapeId = null;
         }
 
-        // --- Settings Modal ---
         const modal = document.getElementById('modal-overlay');
         const modalNoteInput = document.getElementById('modal-note');
         let currentEditingShape = null;
@@ -495,13 +436,8 @@
             }
         };
 
-        // --- File & Storage Logic ---
-
         function saveToLocalStorage() {
-            const data = {
-                bg: appContainer.style.backgroundImage,
-                shapes: shapes
-            };
+            const data = { bg: appContainer.style.backgroundImage, shapes: shapes };
             localStorage.setItem('constellationMidiPro', JSON.stringify(data));
         }
 
@@ -512,9 +448,8 @@
                 if (data.bg) appContainer.style.backgroundImage = data.bg;
                 if (data.shapes) {
                     shapes = [];
-                    svgLayer.innerHTML = ''; // Clear SVG
+                    svgLayer.innerHTML = ''; 
                     data.shapes.forEach(s => {
-                         // Assign new internal IDs to avoid conflicts or just use stored
                          nextId = Math.max(nextId, s.id + 1);
                          shapes.push(s);
                          renderShape(s);
@@ -523,16 +458,10 @@
             }
         }
 
-        // Export to File
         window.saveProject = function() {
-            const data = {
-                shapes: shapes
-                // Note: We cannot save the BG image file content easily to JSON without Bloating it (Base64).
-                // For portability, we only save the layout positions.
-            };
+            const data = { shapes: shapes };
             const blob = new Blob([JSON.stringify(data)], {type: 'application/json'});
             const url = URL.createObjectURL(blob);
-            
             const a = document.createElement('a');
             a.href = url;
             a.download = 'constellation-layout.json';
@@ -541,16 +470,14 @@
             document.body.removeChild(a);
         };
 
-        // Import from File
         document.getElementById('load-input').addEventListener('change', function(e) {
             const file = e.target.files[0];
             if (!file) return;
-            
             const reader = new FileReader();
             reader.onload = function(e) {
                 try {
                     const data = JSON.parse(e.target.result);
-                    if (confirm("Load this layout? Current shapes will be replaced.")) {
+                    if (confirm("Load this layout?")) {
                         shapes = [];
                         svgLayer.innerHTML = '';
                         data.shapes.forEach(s => {
@@ -560,27 +487,20 @@
                         });
                         saveToLocalStorage();
                     }
-                } catch (err) {
-                    alert("Error loading file");
-                }
+                } catch (err) { alert("Error loading file"); }
             };
             reader.readAsText(file);
         });
 
-        // Background Loader
-        document.getElementById('bg-input').addEventListener('change', function(e) {
-            const file = e.target.files[0];
-            if (file) {
-                const reader = new FileReader();
-                reader.onload = function(event) {
-                    appContainer.style.backgroundImage = `url(${event.target.result})`;
-                    saveToLocalStorage(); // This saves Base64 string to local storage (might be large!)
-                };
-                reader.readAsDataURL(file);
+        // NEW: Text input method for background to prevent crash
+        document.getElementById('btn-set-bg').onclick = () => {
+            const url = prompt("Enter image filename (e.g., 'bg.jpg' if hosted in same folder) or full URL:");
+            if(url) {
+                appContainer.style.backgroundImage = `url(${url})`;
+                saveToLocalStorage();
             }
-        });
+        };
 
-        // UI Toggle
         document.getElementById('btn-hide-ui').onclick = () => {
             uiLayer.style.display = 'none';
             document.getElementById('btn-show-ui').style.display = 'block';
@@ -590,7 +510,6 @@
             document.getElementById('btn-show-ui').style.display = 'none';
         };
 
-        // --- Init ---
         loadFromLocalStorage();
 
     </script>
